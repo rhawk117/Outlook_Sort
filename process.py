@@ -1,84 +1,14 @@
 import json
-from InquirerPy import prompt
-from preset import Preset, Filter
-import re as regex
-import win32com.client
-import traceback as debug
 import os
-from preset import preset
+import traceback as debug
+import win32com.client
 import sys
-
-
-class MainMenu:
-    
-    @staticmethod
-    def run() -> list:
-        choices = [
-            "[ Create a Sorting Preset ]",
-            "[ Load a Sorting Preset ]",
-            "[ Help ]",
-            "[ Exit ]"
-        ]
-        menu = prompt(
-                [
-                    {
-                        "type": "list",
-                        "name": "usr_opt",
-                        "message": "[ Would you like to create one ]",
-                        "choices": choices,
-                    }
-                ]
-            )
-        choice = menu["usr_opt"]
-        if choice == choices[0]:
-            pass
-
-        elif choice == choices[1]:
-            pass
-
-        elif choice == choices[2]:
-            pass
-
-        elif choice == choices[3]:
-            pass
-
-
-
-    @staticmethod
-    def mainHndler():
-        pass
-
-    @staticmethod
-    def creationHndler():
-        # Creation = preset.CreatePreset()
-        # Creation.startPresetCreation()
-
-    @staticmethod
-    def loadHndler():
-        pass
-
-    @staticmethod
-    def helpHndler():
-        pass
-
-    @staticmethod
-    def exitHndler():
-        print("[ Exiting Program ]".center(60))
-        sys.exit()
-
+import re as regex
+from preset import Preset, Filter
+from InquirerPy import prompt
 
 # -- Logic of Options using Presets --
 class PresetHandler:
-    
-    '''
-        Anytime the user selects create preset or load one
-        we have to load there outlook client whether it be 
-        to test if a folder exists or to create one. 
-        This class handles the loading of the outlook client
-        and the fetching of the users inbox. This class is 
-        inherited by the CreatePresetHandler and LoadPresetHandler
-    '''
-
     def __init__(self) -> None:
         self.load_outlook_client()
         self.inbox = self.Outlook.GetDefaultFolder(6)
@@ -95,14 +25,8 @@ class PresetHandler:
 
 
 class LoadPresetHandler(PresetHandler):
-    ''''
-        This class handles the logic when the user selects load a preset 
-    
-    '''
     def __init__(self) -> None:
         super().__init__()
-        self.loaded_preset = None
-        self.emailMove = []
 
     def preset_menu_options(self) -> list:
         
@@ -121,14 +45,12 @@ class LoadPresetHandler(PresetHandler):
         choices.append("[ Go Back ]")
         return choices
 
-    def run_preset_menu(self):
-        
+    def preset_menu(self):
         '''
             We want to create a menu that displays all the json files
             in the PresetOptions directory and allow the user to select
             one to load
         '''
-
         choices = self.preset_menu_options()
         if not choices:
             print("[!] No .json Presets were found in programs config directory... [!]")
@@ -144,74 +66,8 @@ class LoadPresetHandler(PresetHandler):
                 }
             ]
         )
-        choice = json_menu["usr_opt"]
-        return choice 
 
-    def run(self):
-        userJSON = self.run_preset_menu()
-        if userJSON == "[ Go Back ]":
-            MainMenu.run()
-        else:
-            self.loaded_preset = Preset.load_preset(userJSON)
-            if not preset:
-                print("[!] An error occurred while trying to load the user preset [!]")
-                MainMenu.run()
-                return 
-
-            print("[i] Sucessfully loaded user preset [i]")
-            self.create_folders_in_outlook()
-
-    
-    def create_folders_in_outlook(self):
-        '''
-            We want to iterate through the list of folder names
-            and create them in outlook
-        '''
-        try:
-            print("[i] Checking & Creating folders from preset file if they don't exist..  [i]")
-            for folder in self.loaded_preset.folder_names:
-                
-                    folder = inbox.Folders.Item(folder_name)
-                    # If the folder does not exist, create it
-                    if folder is None:
-                        self.inbox.Folders.Add(folder)
-
-        except Exception as ex:
-                print(
-                    f"[!] An error occurred while trying to create the folder {folder} in Outlook [!]")
-                debug.print_exc()
-                return 
-    
-    def apply_filter(self):
-        '''
-            We want to iterate through the list of filters
-            and move emails into the appropriate folders
-        '''
-        try:
-            print("[i] Applying filters from preset file..  [i]")
-            for filter in self.loaded_preset.folder_filters:
-                folder = self.inbox.Folders.Item(filter.folder_name)
-                if folder is not None:
-                    for email in self.inbox.Items:
-                        self.check_email(email)
-                      
-                    
-        except Exception as ex:
-            print(f"[!] An error occurred while trying to apply the filter {filter} [!]")
-            debug.print_exc()
-            return
-    
-
-    def check_email(self, email)
-
-        if email.Subject in filter.subject_lines 
-        or email.SenderName in filter.sender_names 
-        or email.SenderEmailAddress in filter.sender_emails:
-            self.emailMove.append(email)
-    
-    
-     
-
+        return json_menu
 
 
 class CreatePresetHandler(PresetHandler):
