@@ -1,0 +1,13 @@
+{
+    "Example Folder 1" : {
+        "Subject Lines" : ["3320", "TCP/IP"],
+        "Emails" : ["example@outlook.com","example@outlook.com"],
+        "Senders" : ["John Doe", "Jane Doe"]
+    },
+    "Example Folder 2" : {
+        "Subject Lines" : ["3320", "TCP/IP"],
+        "Emails" : ["example@outlook.com","example@outlook.com"],
+        "Senders" : ["John Doe", "Jane Doe"]
+    }
+    
+}
