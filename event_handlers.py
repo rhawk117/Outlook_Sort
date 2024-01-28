@@ -32,10 +32,12 @@ class MainMenu:
         choice = menu["usr_opt"]
         if choice == choices[0]:
             pass
+            
 
         elif choice == choices[1]:
-            pass
-
+            hndler = LoadPresetHandler()
+            hndler.run()
+            
         elif choice == choices[2]:
             pass
 
@@ -75,8 +77,9 @@ class PresetHandler:
         we have to load there outlook client whether it be 
         to test if a folder exists or to create one. 
         This class handles the loading of the outlook client
-        and the fetching of the users inbox. This class is 
+        and the fetching of the users inbox which is then
         inherited by the CreatePresetHandler and LoadPresetHandler
+        to avoid code duplication.
     '''
 
     def __init__(self) -> None:
@@ -95,14 +98,22 @@ class PresetHandler:
 
 
 class LoadPresetHandler(PresetHandler):
+    
     ''''
         This class handles the logic when the user selects load a preset 
-    
+        from the main menu, we load the outlook client and the users inbox
+        and then call run_preset_menu to display the users preset options
+        and allow them to select one to load, if the user selects go back
+        we return to the main menu, if the user selects a preset we load
+        the preset and call create_folders_in_outlook to check if the folders
+        in the preset exist in outlook and create them if they don't. We then
+        call apply_filter to apply the filters from the preset to the users
+        inbox and then return to the main menu
     '''
+
     def __init__(self) -> None:
         super().__init__()
         self.loaded_preset = None
-        self.emailMove = []
 
     def preset_menu_options(self) -> list:
         
@@ -130,8 +141,9 @@ class LoadPresetHandler(PresetHandler):
         '''
 
         choices = self.preset_menu_options()
-        if not choices:
+        if not choices or choices is None:
             print("[!] No .json Presets were found in programs config directory... [!]")
+            MainMenu.run()
             return
 
         json_menu = prompt(
@@ -175,7 +187,7 @@ class LoadPresetHandler(PresetHandler):
             self.apply_filters()
 
     
-    def create_folders_in_outlook(self):
+    def create_folders_in_outlook(self) -> None:
         
         '''
             Creates & Checks if folders exist in outlook loaded from 
@@ -273,7 +285,7 @@ class LoadPresetHandler(PresetHandler):
 
         return matching_emails
 
-    def confirm_move(self, emails_moved, folder) -> bool:
+    def confirm_move(self, emails_moved:list, folder:str) -> bool:
         print(f"[>>] Total emails to move: {len(emails_moved)}\n")
         input("[i] Press enter to continue, you will be asked if you'd like to move the emails. [i]")
         yes_no_menu = prompt(
