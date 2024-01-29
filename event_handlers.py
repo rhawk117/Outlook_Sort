@@ -13,12 +13,18 @@ class MainMenu:
     
     @staticmethod
     def run() -> list:
+        
+        ''''
+        
+        '''
+
         choices = [
             "[ Create a Sorting Preset ]",
             "[ Load a Sorting Preset ]",
             "[ Help ]",
             "[ Exit ]"
         ]
+
         menu = prompt(
                 [
                     {
@@ -54,6 +60,7 @@ class MainMenu:
     def creationHndler():
         # Creation = preset.CreatePreset()
         # Creation.startPresetCreation()
+        pass
 
     @staticmethod
     def loadHndler():
@@ -130,6 +137,7 @@ class LoadPresetHandler(PresetHandler):
 
         choices = [f"[ {file} ]" for file in json_files]
         choices.append("[ Go Back ]")
+
         return choices
 
     def run_preset_menu(self):
@@ -141,6 +149,8 @@ class LoadPresetHandler(PresetHandler):
         '''
 
         choices = self.preset_menu_options()
+
+        # No json files were found in the config directory
         if not choices or choices is None:
             print("[!] No .json Presets were found in programs config directory... [!]")
             MainMenu.run()
@@ -172,19 +182,23 @@ class LoadPresetHandler(PresetHandler):
             filters from the preset to the users inbox and then return
             to the main menu
         '''
+        # Recieve the users choice of the preset to load
         userJSON = self.run_preset_menu()
         if userJSON == "[ Go Back ]":
             MainMenu.run()
-        else:
-            self.loaded_preset = Preset.load_preset(userJSON)
-            if not preset:
-                print("[!] An error occurred while trying to load the user preset [!]")
-                MainMenu.run()
-                return 
+            return
+        
+        self.loaded_preset = Preset.load_preset(userJSON)
+        if not preset:
+            print("[!] An error occurred while trying to load the user preset [!]")
+            MainMenu.run()
+            return 
 
-            print("[i] Sucessfully loaded user preset [i]")
-            self.create_folders_in_outlook()
-            self.apply_filters()
+        print("[i] Sucessfully loaded user preset [i]")
+        self.create_folders_in_outlook()
+        print(f'[i] Successfully created / confirmed existence of folders in Outlook from preset file\n[i]
+               applying filters [i]')
+        self.apply_filters()
 
     
     def create_folders_in_outlook(self) -> None:
@@ -199,7 +213,7 @@ class LoadPresetHandler(PresetHandler):
             try:
                 folder = self.inbox.Folders.Item(folder_name)
                 if folder is None:
-                    print(f"[i] Creating folder {folder_name} in Outlook [i]")
+                    print(f"[i] Creating folder {folder_name} in Outlook since it didn't exist [i]")
                     self.inbox.Folders.Add(folder_name)
 
             except Exception as ex:
@@ -234,37 +248,79 @@ class LoadPresetHandler(PresetHandler):
                 continue
 
     def _apply_a_filter(self, filter_obj: 'Filter') -> bool:
-        matching_emails = self._find_matches_in(filter_obj)
+        
+        '''
+            Performs the series of checks & actions performed 
+            when applying a singular filter to the users inbox
+            refactored into a method to improve code readability
 
-        if not matching_emails:
+            1). We first try to find emails that match the filter criteria
+                if no emails are found we print a message and return False
+            
+            2). We then call confirm_move to ask the user to confirm if they
+                want to move these emails to the specified folder. 
+                    -If they select No we return False and continue
+                     to the next filter
+                        
+            
+            3). If the user confirms we should move the emails the program found
+                double check if the folder exists in outlook which it always should
+                unless the user deleted it manually. 
+                    -If the folder doesn't exist we return False and continue to 
+                    the next filter
+            
+            4). If the folder exists we call _move_emails to move the emails to the folder
+        '''
+
+        emails_being_moved = self._find_matches_in(filter_obj)
+
+        # No Emails were found that matched the filter criteria
+        if not emails_being_moved:
             print(f'[i] No emails were found that should be moved to {filter_obj.folder_name} [i]')
             return False
         
         # Confirm with the user that they want to move the emails
-        if self.confirm_move(matching_emails, filter_obj.folder_name):
-            folder = self.inbox.Folders.Item(filter_obj.folder_name)
+        if not self.confirm_move(emails_being_moved, filter_obj.folder_name):
+            return False 
+        
+        folder = self.inbox.Folders.Item(filter_obj.folder_name)
 
-            # Double Check folder exists 
-            if folder is not None:
-                for email in matching_emails:
-                    email.Move(folder)
-                print(f'[i] Sucessfully moved emails to {filter_obj.folder_name} [i]')
-                return True
-
-            else:
-                print(f'[!] Could not find a folder named "{filter_obj.folder_name}" [!]')
-                return False
-
-        else:
-            print(f'[i] Proceeding to next folder [i]')
+        # Double Check folder exists before email is moved 
+        if folder is None:
+            print(
+                f'[!] Could not find a folder named "{filter_obj.folder_name}" [!]'
+            )
             return False
+        
+        self._move_emails(emails_being_moved, folder)
+        print(f'[i] Sucessfully moved {len(emails_being_moved)} emails to {filter_obj.folder_name} [i]')
+        return True    
+
+        
+
+    def _move_emails(self, emails_being_moved: list, folder: str) -> None:
+        
+        '''
+            Moves the given list of emails into the specified folder.
+        '''
+
+        for email in emails_being_moved:
+            try:
+                email.Move(folder)
+            except Exception as ex:
+                print(f'[!] An error occurred while trying to move the email {email.Subject} to {folder} [!]')
+                debug.print_exc()
+                continue
 
     def _find_matches_in(self, filter_obj: 'Filter') -> list:
+        
         """
             Finds emails in the inbox that match the criteria specified in the given filter object.
 
-            The method checks each email in the inbox against the subject lines, senders, and email addresses specified in the filter.
-            If an email matches any of the criteria, it's added to the list of matching emails.
+            The method checks each email in the inbox against the subject lines, senders, and email 
+            addresses specified in the filter.
+            
+            - If an email matches any of the criteria, it's added to the list of matching emails.
 
             Args:
                 filter_obj (Filter): The filter object containing the criteria to match against.
@@ -273,34 +329,67 @@ class LoadPresetHandler(PresetHandler):
                 list: A list of emails that match the filter criteria.
         """
         
-        matching_emails = []
+        emails_being_moved = []
+        # Check each email in the inbox against the filters list of subject lines 
         for subject_line in filter_obj.subject_lines:
-            matching_emails.extend(self.inbox.Items.Restrict(f"[Subject] = '{subject_line}'"))
+            emails_being_moved.extend(
+                self.inbox.Items.Restrict(f"[Subject] = '{subject_line}'")            
+            )
 
+        # Check each email in the inbox against the filters list of senders
         for sender in filter_obj.senders:
-            matching_emails.extend(self.inbox.Items.Restrict(f"[SenderName] = '{sender}'"))
+            emails_being_moved.extend(
+                self.inbox.Items.Restrict(f"[SenderName] = '{sender}'")
+            )
 
+        # Check each email in the inbox against the filters list of email addresses
         for email_address in filter_obj.emails:
-            matching_emails.extend(self.inbox.Items.Restrict(f"[SenderEmailAddress] = '{email_address}'"))
+            emails_being_moved.extend(
+                self.inbox.Items.Restrict(f"[SenderEmailAddress] = '{email_address}'")                
+            )
 
-        return matching_emails
+        return emails_being_moved
+
+    def _display_an_email(self, email) -> None:
+        print(f"[>>] Email Subject: {email.Subject}")
+        print(f"[>>] Email Sender: {email.SenderName}")
+        print(f"[>>] Email Sender Email Address: {email.SenderEmailAddress}\n")
+        
+        
 
     def confirm_move(self, emails_moved:list, folder:str) -> bool:
-        print(f"[>>] Total emails to move: {len(emails_moved)}\n")
-        input("[i] Press enter to continue, you will be asked if you'd like to move the emails. [i]")
+        
+        '''
+            Upon finding emails that match the filter criteria, this method asks 
+            the user to confirm if they want to move these emails to the specified folder.
+
+            This ensures that if the program makes an error the user can cancel the moving action
+            before it happens.
+        '''
+
+        menu_items = ["[ View Emails Being Moved ]", "[ Yes ]", "[ No ]"]
+        menu_prompt = f"[ Would you like to move the {len(emails_moved)} emails" + f" found into {folder} ]",
+        warning = "\n[!] WARNING this action cannot be undone [!]"
         yes_no_menu = prompt(
             [
                 {
                     "type": "list",
                     "name": "usr_opt",
-                    "message": f"[ Would you like to move the emails found into {folder}, this action cannot be undone ]",
-                    "choices": ["[ Yes ]", "[ No ]"],
+                    "message": menu_prompt + warning,
+                    "choices": menu_items,
                 }
             ]
         )
 
         choice = yes_no_menu["usr_opt"]
-        if choice == "[ Yes ]":
+        
+        # User wants to view the emails being moved
+        if choice == "[ View Emails Being Moved ]":
+            self.hndle_view_emails(emails_moved)
+            # Recursive call back to menu to confirm move after user views the emails
+            return self.confirm_move(emails_moved, folder)
+        
+        elif choice == "[ Yes ]":
             print('[i] Moving emails... [i]')
             return True
 
@@ -308,20 +397,40 @@ class LoadPresetHandler(PresetHandler):
             print("[i] Terminating Email Sort... [i]")
             return False
 
+    def hndle_view_emails(self, emails_moved:list) -> None:
+        for email in emails_moved:
+            self._display_an_email(email)
+
+        print("*"*60)
+        input(
+            "\n" + "[i] Press Enter to Return back to the confirmation menu... [i]".center(60) + "\n"
+        )
+        print("*"*60)
 
 
 
     
     
-     
-
-
-
 class CreatePresetHandler(PresetHandler):
+    '''
+        This class handles the logic when the user selects create a preset,
+
+        We have the following attributes for our class
+        
+        - folderPattern: a pre combiled regex pattern that checks for invalid characters in a folder name
+        
+        - usrFolders: a list that holds the folder names that will be the keys for the nested filter objects / dictionaries 
+                      inputted by the user
+
+        - userFilters: a list that holds the filter objects / dictionaries that will be the values for the nested filter objects
+                         / dictionaries
+
+    '''
     def __init__(self) -> None:
         super().__init__()
-        self.folderFilter = regex.compile(r'[\\/:*?"<>|]')
-        self.usrFolders = []
+        self.folderPattern = regex.compile(r'[\\/:*?"<>|]')
+        self.usrFolders: list = []
+        self.userFilters: list = []
 
     def folder_name_checks(self, folder_name) -> bool:
         
@@ -332,17 +441,18 @@ class CreatePresetHandler(PresetHandler):
 
         if folder_name == '':
             return False
+        
         if folder_name == 'esc':
             return True
 
         # Check if the folder name is empty
         if not folder_name:
-            print("Folder name cannot be empty. Please try again.")
+            print("[!] A Folder name cannot be empty. Please try again.")
             return False
 
         # Check for invalid characters
-        if regex.search(self.folderFilter, folder_name):
-            print("Folder name contains invalid characters. Please try again.")
+        if regex.search(self.folderPattern, folder_name):
+            print("[!] Folder name contains invalid characters. Please try again.")
             return False
 
         return True
@@ -358,13 +468,20 @@ class CreatePresetHandler(PresetHandler):
         '''
 
         folder_name = ''
-        while not self.folder_name_checks(folder_name):
+        while True:
             print(
                 '[ Enter the name of the Folder you would like to create in Outlook ]')
             folder_name = input(
-                '[?] Enter here or type "esc" to stop folder input: ').strip()
+                '[?] Enter here or type "esc" to stop folder input: '
+                ).strip()
+                
             if folder_name == 'esc':
                 break
+
+            # We recieved invalid folder name input from the user
+            if not self.folder_name_checks(folder_name):
+                continue
+
             try:
                 self.inbox.Folders[folder_name]
             except Exception as ex:
