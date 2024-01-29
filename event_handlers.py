@@ -482,6 +482,7 @@ class LoadPresetHandler(PresetHandler):
 
 
 class CreatePresetHandler(PresetHandler):
+    
     '''
         This class handles the logic when the user selects create a preset,
 
@@ -502,10 +503,18 @@ class CreatePresetHandler(PresetHandler):
     def __init__(self) -> None:
         super().__init__()
         self.folderPattern = regex.compile(r'[\\/:*?"<>|]')
-        self.usrFolders: list = []
-        self.userFilters: list = []
+        self.emailPattern = regex.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
+        self.known_emails: set = {emails.SenderEmailAddress for emails in self.inbox.Items}
+        self.known_senders: set = {emails.SenderName for emails in self.inbox.Items}
 
-    def validate_folder_input(self, folder_name) -> bool:
+        # Input we need from a user 
+        self.userFilters: list = []
+        self.usrFolders: set = []
+        self.subject_lines: set = []
+        self.emailAddresses: set = []
+        
+
+    def folder_name_validator(self, folder_name) -> bool:
         
         '''
             A series of checks performed to see if an inputted
@@ -537,7 +546,54 @@ class CreatePresetHandler(PresetHandler):
         print("[!] Folder name already exists in Outlook. Please try again.")
         return False
 
+    def email_address_validator(self, email_address: str) -> bool:
+        if not regex.match(self.emailPattern, email_address):
+            print(f"[!] The email address entered ({email_address}) is invalid. Please try again with a valid email address.")
+            return False
+        
+        if email_address not in self.known_emails:
+            print(f"[!] The email address you entered ({email_address}) has not sent any emails to your inbox. Please re-enter a valid email address.")
+            return False
+        
+        if email_address in self.emailAddresses:
+            print(f"[!] The email address you entered ({email_address}) already exists in the list of emails in your json file. Please try again.")
+            return False
+        
+        return True
+    
+    def subject_line_validator(self, usr_subject_line: str) -> bool:
+        
+        '''
+            We want to check if the subject line is empty or contains
+            invalid characters and return True if it doesn't and False
+            if it does
+        '''
 
+        if usr_subject_line.strip() == '':
+            print("[i] Subject line cannot be empty. Please try again.")
+            return False
+        
+        if not all(c.isalnum() or c.isspace() for c in usr_subject_line):
+            print("[i] Subject line can only contain alphanumeric characters and spaces. Please try again.")
+            return False
+        
+        if usr_subject_line in self.subject_lines:
+            print(f"[i] Subject line already exists in the list of subject lines in your json file. Please try again.")
+            return False
+        
+        return True
+
+    def sender_validator(self, usr_sender: str) -> bool:
+        if usr_sender.strip() == '':
+            print("[i] Sender cannot be empty. Please try again.")
+            return False
+        if usr_sender not in self.known_senders:
+            print(f"[i] The sender you entered ({usr_sender}) has not sent any emails to your inbox. Please re-enter a valid sender.")
+            return False
+        if usr_sender in self.senders:
+            print(f"[i] The sender you entered ({usr_sender}) already exists in the list of senders in your json file. Please try again.")
+            return False
+        return True
 
     def _get_field_input(self, field_name:str, field_prompt: str, input_validator: bool):
         flag, field_input = False, ''
@@ -547,30 +603,35 @@ class CreatePresetHandler(PresetHandler):
             if field_input.lower() == 'esc':
                 flag = True
                 break
+
             elif self.input_validator(field_input):
                 print(f'[i] Valid Input recieved {field_input} & it will be saved in the .json [i]')
                 break
+
             else:
                 print(f'[i] Invalid Input recieved {field_input} & it will not be saved [i]')
                 continue
+
         return (field_input, flag)
 
-
-    def get_a_fields_input(self, field_name:str, field_prompt: str, 
-        input_validator: bool, field_list: list) -> list:
+    def get_a_fields_input(self, field_name:str, field_prompt: str, input_validator: bool) -> list:
+        field_list = []
         while True:
             usr_input, esc_check = self._get_field_input(field_name, field_prompt, input_validator)
             if esc_check:
                 break
+
             field_list.append(usr_input)
+
         print(f'[i] User Input for {field_name} will be saved [i]')
         print(field_list)
+
         return field_list
 
     def is_empty(self, a_list) -> bool:
         return len(a_list) == 0 or a_list is None or not a_list
 
-    def get_preset_data(self):
+    def get_folder_data(self) -> None:
         
         '''
             We start the PresetHandler creation process
@@ -578,45 +639,80 @@ class CreatePresetHandler(PresetHandler):
             until the type 'esc' and save them to folderNames
             for further processing 
         '''
+
         # Get Folder Input 
-        users_folders = self.get_a_fields_input('folder name', 'Enter a folder name or "esc": ', self.validate_folder_input, self.usrFolders)
+        users_folders = self.get_a_fields_input('folder name',
+                    'Enter all the folder names you\'d like this preset to create / sort from upon loading the preset or "esc" when done: ', 
+                    self.folder_name_validator
+        )
         if self.is_empty(users_folders):
-            print('[!] No folder names were entered, cannot continue preset creation [!]')
-            return
+            self.continue_menu('folder name', self.get_folder_data)
         
-        users_folders = self.usrFolders
-        # Get Filter Input for each Folder
-        for folder in self.usrFolders:
-            pass
-
-    # TODO: Git Commit, Create Input validators for each Filter Field 
-    # Put them all together in a method.
-
-    def subject_line_validator(self, usr_subject_line: str) -> bool:
-        '''
-            We want to check if the subject line is empty or contains
-            invalid characters and return True if it doesn't and False
-            if it does
-        '''
-        if usr_subject_line.strip() == '':
-            print("[i] Subject line cannot be empty. Please try again.")
-            return False
-        elif not all(c.isalnum() or c.isspace() for c in usr_subject_line):
-            print("[i] Subject line can only contain alphanumeric characters and spaces. Please try again.")
-            return False
+        self.usrFolders = users_folders  
+    
+    
+    def continue_menu(self, field: str, current: int) -> None:
+        choices = ["[ Continue ]", "[ Go Back ]"]
+        yes_no_menu = prompt(
+            [
+                {
+                    "type": "list",
+                    "name": "usr_opt",
+                    "message": f"[ Would you like to re-enter the {field} or go back to the Main Menu to exit Preset Creation]",
+                    "choices": choices,
+                }
+            ]
+        )
+        choice = yes_no_menu["usr_opt"]
+        if choice == choices[0]:
+            return current
         
-        return True
+        elif choice == choices[1]:
+            MainMenu.run()
+            return -1
+    
+    def get_filter_data(self, current:int, current_folder:str) -> list:
+        '''
+        WORK IN PROGRESS
+        '''
+        field = []
+        if current == 0:
+            users_subject_lines = self.get_a_fields_input('subject line', 
+                f'Enter subject lines that should move an email into the {current_folder} or "esc": ', 
+                self.subject_line_validator
+            )
+            field = users_subject_lines
 
-    def createFilters(self):
-        '''
-            We want to iterate through the list of folder names
-            and ask the user for each
-            1. What Subject Lines should place an email in a folder
-            2. What Senders should place an email in a folder 
-            3. What Email Addresses should place an email in a Folder
-        '''
-        for names in self.usrFolders:
-            pass
-        pass
+        elif current == 1:
+            users_email_addresses = self.get_a_fields_input('email address', 
+                f'Enter email addresses that should move an email into the {current_folder} or "esc": ', 
+                self.email_address_validator 
+            )
+            field = users_email_addresses
+
+        elif current == 2:
+            users_senders = self.get_a_fields_input('sender', 
+                f'Enter senders that should move an email into the {current_folder} or "esc": ', 
+                self.email_address_validator
+            )
+            field = users_senders
+
+        if not field:
+            if self.continue_menu('filter', self.get_filter_data) != -1:
+                self.get_filter_data(current, current_folder)
+        
+        return field
+        
+        
+
+    def get_filters(self):
+        for i, folders in enumerate(self.usrFolders, start = 0):
+            self.get_filter_data(i, folders)
+
+            
+
+
+
+
 
 
