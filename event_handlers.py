@@ -7,6 +7,7 @@ import traceback as debug
 import os
 from preset import preset
 import sys
+from time import sleep
 
 
 class MainMenu:
@@ -15,7 +16,9 @@ class MainMenu:
     def run() -> list:
         
         ''''
-        
+            Runs the main menu of the program and based on the 
+            users choice calls the appropriate handlers we created
+            below
         '''
 
         choices = [
@@ -64,11 +67,77 @@ class MainMenu:
 
     @staticmethod
     def loadHndler():
-        pass
+        handle_load = LoadPresetHandler()
+        handle_load.run()
 
     @staticmethod
     def helpHndler():
-        pass
+        MainMenu.display_help()
+        input("[i] Press Enter to Return back to the main menu... [i]".center(60))
+        MainMenu.run()
+
+    @staticmethod
+    def help_message(msg: str, delay: float):
+        print("[i] " + msg + " [i]", end='\n')
+        sleep(delay)
+
+    @staticmethod
+    def display_help() -> None:
+        MainMenu.help_message(
+            "This tutorial will help you and walk you through the preset creation process for this script",
+            5
+        )
+
+        MainMenu.help_message(
+            """Once you start the preset creation process, you will first be asked 
+        to enter at least 1 or more the folder names you want to create / sort in Outlook
+        that you'd like to move emails into""",
+            5
+        )
+        
+        MainMenu.help_message(
+            """NOTE: For each folder name you input, you will then have to provide at least 1 or more subject 
+        lines, senders, and email addresses""",
+            5
+        )
+
+        MainMenu.help_message(
+            """
+            The program cannot create a preset or filter for a folder if you omit any of the required fields, keep this in mind
+            """, 
+            5
+        )
+
+        MainMenu.help_message(
+            """
+            After you have inputted all the folder names and filters for the folder names and have successfully created your preset
+        In the Main Menu Select 'load a preset' and the progam will load the preset you select in the menu.
+            """, 
+            5
+        )
+        
+        MainMenu.help_message(
+            """
+            The program will then use the filters for each folder and will search your inbox for emails containing matching subject line, 
+        senders, or email address and will flag any matching emails.
+            """,
+            5
+        )
+
+        MainMenu.help_message(
+            """
+            In order to avoid any mistakes, the program will ask you to confirm if you want to move the emails it has flagged for each folder
+        before moving them.
+            """,
+            5
+        )
+
+        MainMenu.help_message(
+            """
+            If you would like to view this tutorial again, you can find it in the 'help' menu in the main menu
+            """,
+            5
+        )
 
     @staticmethod
     def exitHndler():
@@ -112,7 +181,7 @@ class LoadPresetHandler(PresetHandler):
         and then call run_preset_menu to display the users preset options
         and allow them to select one to load, if the user selects go back
         we return to the main menu, if the user selects a preset we load
-        the preset and call create_folders_in_outlook to check if the folders
+        the preset and call _create_folders_in_outlook to check if the folders
         in the preset exist in outlook and create them if they don't. We then
         call apply_filter to apply the filters from the preset to the users
         inbox and then return to the main menu
@@ -135,7 +204,7 @@ class LoadPresetHandler(PresetHandler):
             print("[!] No .json Presets were found [!]")
             return None
 
-        choices = [f"[ {file} ]" for file in json_files]
+        choices = [f"{file}" for file in json_files]
         choices.append("[ Go Back ]")
 
         return choices
@@ -176,7 +245,7 @@ class LoadPresetHandler(PresetHandler):
             we call run_preset_menu to get the users choice of
             preset to load, if the user selects go back we return
             to the main menu, if the user selects a preset we load
-            the preset and call create_folders_in_outlook to check
+            the preset and call _create_folders_in_outlook to check
             if the folders in the preset exist in outlook and create
             them if they don't. We then call apply_filter to apply the
             filters from the preset to the users inbox and then return
@@ -195,13 +264,12 @@ class LoadPresetHandler(PresetHandler):
             return 
 
         print("[i] Sucessfully loaded user preset [i]")
-        self.create_folders_in_outlook()
+        self._create_folders_in_outlook()
         print(f'[i] Successfully created / confirmed existence of folders in Outlook from preset file\n[i]
                applying filters [i]')
-        self.apply_filters()
+        self._apply_filters()
 
-    
-    def create_folders_in_outlook(self) -> None:
+    def _create_folders_in_outlook(self) -> None:
         
         '''
             Creates & Checks if folders exist in outlook loaded from 
@@ -221,7 +289,7 @@ class LoadPresetHandler(PresetHandler):
                 debug.print_exc()
                 return 
 
-    def apply_filters(self) -> None:
+    def _apply_filters(self) -> None:
         
         """
             Applies filters from the loaded preset file to the emails in the inbox.
@@ -257,7 +325,7 @@ class LoadPresetHandler(PresetHandler):
             1). We first try to find emails that match the filter criteria
                 if no emails are found we print a message and return False
             
-            2). We then call confirm_move to ask the user to confirm if they
+            2). We then call _confirm_move to ask the user to confirm if they
                 want to move these emails to the specified folder. 
                     -If they select No we return False and continue
                      to the next filter
@@ -280,7 +348,7 @@ class LoadPresetHandler(PresetHandler):
             return False
         
         # Confirm with the user that they want to move the emails
-        if not self.confirm_move(emails_being_moved, filter_obj.folder_name):
+        if not self._confirm_move(emails_being_moved, filter_obj.folder_name):
             return False 
         
         folder = self.inbox.Folders.Item(filter_obj.folder_name)
@@ -297,7 +365,6 @@ class LoadPresetHandler(PresetHandler):
         return True    
 
         
-
     def _move_emails(self, emails_being_moved: list, folder: str) -> None:
         
         '''
@@ -355,9 +422,7 @@ class LoadPresetHandler(PresetHandler):
         print(f"[>>] Email Sender: {email.SenderName}")
         print(f"[>>] Email Sender Email Address: {email.SenderEmailAddress}\n")
         
-        
-
-    def confirm_move(self, emails_moved:list, folder:str) -> bool:
+    def _confirm_move(self, emails_moved:list, folder:str) -> bool:
         
         '''
             Upon finding emails that match the filter criteria, this method asks 
@@ -385,9 +450,9 @@ class LoadPresetHandler(PresetHandler):
         
         # User wants to view the emails being moved
         if choice == "[ View Emails Being Moved ]":
-            self.hndle_view_emails(emails_moved)
+            self._hndle_view_emails(emails_moved)
             # Recursive call back to menu to confirm move after user views the emails
-            return self.confirm_move(emails_moved, folder)
+            return self._confirm_move(emails_moved, folder)
         
         elif choice == "[ Yes ]":
             print('[i] Moving emails... [i]')
@@ -397,7 +462,14 @@ class LoadPresetHandler(PresetHandler):
             print("[i] Terminating Email Sort... [i]")
             return False
 
-    def hndle_view_emails(self, emails_moved:list) -> None:
+    def _hndle_view_emails(self, emails_moved:list) -> None:
+        
+        '''
+            Displays the emails that will be moved to the user
+            before the program moves them if they Select View Emails
+            in the Confirm Move Menu
+        '''
+
         for email in emails_moved:
             self._display_an_email(email)
 
@@ -409,20 +481,21 @@ class LoadPresetHandler(PresetHandler):
 
 
 
-    
-    
 class CreatePresetHandler(PresetHandler):
     '''
         This class handles the logic when the user selects create a preset,
 
         We have the following attributes for our class
         
-        - folderPattern: a pre combiled regex pattern that checks for invalid characters in a folder name
+        - folderPattern: a pre combiled regex pattern that checks 
+                         for invalid characters in a folder name
         
-        - usrFolders: a list that holds the folder names that will be the keys for the nested filter objects / dictionaries 
+        - usrFolders: a list that holds the folder names that will 
+                      be the keys for the nested filter objects / dictionaries 
                       inputted by the user
 
-        - userFilters: a list that holds the filter objects / dictionaries that will be the values for the nested filter objects
+        - userFilters: a list that holds the filter objects / dictionaries
+                          that will be the values for the nested filter objects
                          / dictionaries
 
     '''
@@ -432,18 +505,12 @@ class CreatePresetHandler(PresetHandler):
         self.usrFolders: list = []
         self.userFilters: list = []
 
-    def folder_name_checks(self, folder_name) -> bool:
+    def validate_folder_input(self, folder_name) -> bool:
         
         '''
             A series of checks performed to see if an inputted
             folder name can be created in Outlook true if it can, etc.
         '''
-
-        if folder_name == '':
-            return False
-        
-        if folder_name == 'esc':
-            return True
 
         # Check if the folder name is empty
         if not folder_name:
@@ -454,59 +521,91 @@ class CreatePresetHandler(PresetHandler):
         if regex.search(self.folderPattern, folder_name):
             print("[!] Folder name contains invalid characters. Please try again.")
             return False
-
-        return True
-
-    def get_folder_input(self):
         
-        '''
-            While loop that uses previous function above
-            and a try block to determine whether or not
-            an inputted folder name already exists in outlook
-            returns the string inputted upon recieving valid 
-            input from the user
-        '''
+        # Check for duplicate folder names 
+        if folder_name in self.usrFolders:
+            print("[!] Folder name already exists in the list of folders in your json file. Please try again.")
+            return False 
 
-        folder_name = ''
+        # Check if the folder name already exists in Outlook by trying to access it, which throws if it doesn't exist
+        try:
+            self.inbox.Folders[folder_name]
+        except Exception as ex:
+            print('[i] Folder name doesn\'t exist in Outlook, saving folder input [i]')
+            return True
+        
+        print("[!] Folder name already exists in Outlook. Please try again.")
+        return False
+
+
+
+    def _get_field_input(self, field_name:str, field_prompt: str, input_validator: bool):
+        flag, field_input = False, ''
         while True:
-            print(
-                '[ Enter the name of the Folder you would like to create in Outlook ]')
-            folder_name = input(
-                '[?] Enter here or type "esc" to stop folder input: '
-                ).strip()
-                
-            if folder_name == 'esc':
+            print(field_prompt)
+            field_input = input(f'[?] Enter a {field_name} or "esc": ').strip()
+            if field_input.lower() == 'esc':
+                flag = True
                 break
-
-            # We recieved invalid folder name input from the user
-            if not self.folder_name_checks(folder_name):
+            elif self.input_validator(field_input):
+                print(f'[i] Valid Input recieved {field_input} & it will be saved in the .json [i]')
+                break
+            else:
+                print(f'[i] Invalid Input recieved {field_input} & it will not be saved [i]')
                 continue
+        return (field_input, flag)
 
-            try:
-                self.inbox.Folders[folder_name]
-            except Exception as ex:
-                return folder_name
-            print("Folde name already exists")
 
-    def startPresetOptionCreation(self):
+    def get_a_fields_input(self, field_name:str, field_prompt: str, 
+        input_validator: bool, field_list: list) -> list:
+        while True:
+            usr_input, esc_check = self._get_field_input(field_name, field_prompt, input_validator)
+            if esc_check:
+                break
+            field_list.append(usr_input)
+        print(f'[i] User Input for {field_name} will be saved [i]')
+        print(field_list)
+        return field_list
+
+    def is_empty(self, a_list) -> bool:
+        return len(a_list) == 0 or a_list is None or not a_list
+
+    def get_preset_data(self):
+        
         '''
             We start the PresetHandler creation process
             by asking the user to enter a folder names
             until the type 'esc' and save them to folderNames
             for further processing 
         '''
-        while True:
-            usr_input = self.get_folder_input()
-            if usr_input != 'esc':
-                self.usrFolders.append(usr_input)
-            else:
-                break
-        if not self.usrFolders:
-            print(
-                "[!] Cannot continue with PresetHandler creation, you must have at least one folder name")
+        # Get Folder Input 
+        users_folders = self.get_a_fields_input('folder name', 'Enter a folder name or "esc": ', self.validate_folder_input, self.usrFolders)
+        if self.is_empty(users_folders):
+            print('[!] No folder names were entered, cannot continue preset creation [!]')
             return
+        
+        users_folders = self.usrFolders
+        # Get Filter Input for each Folder
+        for folder in self.usrFolders:
+            pass
 
-        print(self.usrFolders)
+    # TODO: Git Commit, Create Input validators for each Filter Field 
+    # Put them all together in a method.
+
+    def subject_line_validator(self, usr_subject_line: str) -> bool:
+        '''
+            We want to check if the subject line is empty or contains
+            invalid characters and return True if it doesn't and False
+            if it does
+        '''
+        if usr_subject_line.strip() == '':
+            print("[i] Subject line cannot be empty. Please try again.")
+            return False
+        elif not all(c.isalnum() or c.isspace() for c in usr_subject_line):
+            print("[i] Subject line can only contain alphanumeric characters and spaces. Please try again.")
+            return False
+        
+        return True
 
     def createFilters(self):
         '''
@@ -519,3 +618,5 @@ class CreatePresetHandler(PresetHandler):
         for names in self.usrFolders:
             pass
         pass
+
+
