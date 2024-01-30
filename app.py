@@ -2,10 +2,8 @@ import os
 import sys
 import logging as log
 from preset import Preset
-import win32com.client
 from InquirerPy import prompt
-import preset 
-from event_handlers import Handler
+from event_handlers import MainMenu
 
 
 
@@ -13,6 +11,7 @@ from event_handlers import Handler
 class App:
     def __init__(self) -> None:
         self._startUp()
+        self.uponStart()
 
     def _startUp(self):
         
@@ -41,40 +40,8 @@ class App:
         log.basicConfig(filename=f'{self.config}\\program.log', level=log.DEBUG,
         format='%(asctime)s - %(levelname)s - %(message)s')
         log.info('Finished program configurations')
-    
-    def MainMenu(self):
-        choices = [
-            "[ Create a Sorting Preset ]",
-            "[ Load a Sorting Preset ]",
-            "[ Help ]",
-            "[ Exit ]"
-        ]
+        MainMenu.run()
 
-        yes_no_menu = prompt(
-            [
-                {
-                    "type": "list",
-                    "name": "usr_opt",
-                    "message": "[ Welcome Select a Menu Option ]",
-                    "choices": choices,
-                }
-            ]
-        )
-        choice = yes_no_menu["usr_opt"]
-        if choice == choices[0]:
-            Handler.creationHndler()
-
-        elif choice == choice[1]:
-            Handler.loadHndler()
-
-        elif choice == choice[2]:
-            Handler.helpHndler()
-
-        elif choice == choice[3]:
-            Handler.exitHndler()
-
-    def run(self):
-        self.MainMenu()
             
 
 

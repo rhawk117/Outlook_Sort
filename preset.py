@@ -7,49 +7,51 @@ from dataclasses import dataclass
 
 @dataclass
 class Filter:
+    
     '''
         Class represents each of the nested dictionaries
         in the preset .json file
     '''
+
     subject_lines: list
     emails: list
-    senders: list
     folder_name: str
 
     def to_dict(self) -> dict:
         return {
-            'subject_lines': self.subject_lines,
-            'emails': self.emails,
-            'senders': self.senders,
-            'folder_name': self.folder_name
+            'subject_lines' : self.subject_lines,
+            'emails' : self.emails,
+            'folder_name':  self.folder_name
         }
 
     def is_valid(self) -> bool:
-        return self.subject_lines or self.emails or self.senders
+        return self.subject_lines or self.emails 
 
 
 class Preset:
     def __init__(self, folders: list, filters: list, file_name: str):
-        self.as_json = {}
+        self.as_json: dict = {}
         self._set_preset(folders, filters, file_name)
 
-    def _set_preset(self, folders, filters, file_name):
+    def _set_preset(self, folders, filters, file_name) -> None:
         
         '''
             sets the preset properties used in class constructor
         '''
 
         if len(folders) != len(filters):
-            print('[!] The number of folders and filters do not match [!]')
+            print('[!] The number of folders and filters do not match, cannot create / load a preset [!]')
             return
 
         self.folder_names = folders
         self.preset_filters = filters
         self.file_name = file_name
+
         # Sets the as_json property to a dictionary
         self._construct_preset()
 
     def _construct_preset(self):
+
         # We can't use zip() aren't the same length
         if len(self.folder_names) != len(self.preset_filters):
             print('[!] The number of folders and filters do not match [!]')
@@ -67,12 +69,6 @@ class Preset:
 
             This method checks if the preset can be saved as JSON and if the 'config' directory exists.
             If the conditions are met, it saves the user preset as a JSON file in the 'config' directory.
-
-            Returns:
-                None
-
-            Raises:
-                Exception: If an error occurs while trying to save the user preset.
         """
 
         if not self.as_json or not os.path.exists('config'):
@@ -83,6 +79,7 @@ class Preset:
         try:
             with open(f'config\\{self.file_name}', mode='w') as file:
                 json.dump(self.as_json, file, indent=4)
+
             print('[i] Sucessfully saved user preset [i]')
         except Exception as ex:
             print(
@@ -92,6 +89,7 @@ class Preset:
 
     @staticmethod
     def load_preset(preset_name:str) -> 'Preset':
+        
         """
             Load a preset from a JSON file.
 
@@ -132,12 +130,12 @@ class Preset:
             return None
 
     @staticmethod
-    def _fetch_preset_filters(loaded_json: dict):
+    def _fetch_preset_filters(loaded_json: dict) -> 'list[Filter]':
         # unpack all the nested dictionaries into filter objects so we can use them
         return [Filter(**filter_data) for filter_data in loaded_json.values()]
     
     @staticmethod
-    def fetch_jsons():
+    def fetch_jsons() -> list:
     
         '''
             retrieves all json files from PresetOptions dir

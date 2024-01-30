@@ -5,7 +5,6 @@ import re as regex
 import win32com.client
 import traceback as debug
 import os
-from preset import preset
 import sys
 from time import sleep
 
@@ -13,7 +12,7 @@ from time import sleep
 class MainMenu:
     
     @staticmethod
-    def run() -> list:
+    def run():
         
         ''''
             Runs the main menu of the program and based on the 
@@ -33,25 +32,28 @@ class MainMenu:
                     {
                         "type": "list",
                         "name": "usr_opt",
-                        "message": "[ Would you like to create one ]",
+                        "message": "[ Select a Menu Option To Continue ]",
                         "choices": choices,
                     }
                 ]
-            )
+        )
+
         choice = menu["usr_opt"]
         if choice == choices[0]:
-            pass
+            obj = CreatePresetHandler()
+            obj.run()
             
 
         elif choice == choices[1]:
-            hndler = LoadPresetHandler()
-            hndler.run()
+            obj = LoadPresetHandler()
+            obj.run()
+            
             
         elif choice == choices[2]:
-            pass
+            MainMenu.helpHndler()
 
         elif choice == choices[3]:
-            pass
+            print('[i] Exiting Program [i]')
 
 
 
@@ -162,7 +164,7 @@ class PresetHandler:
         self.load_outlook_client()
         self.inbox = self.Outlook.GetDefaultFolder(6)
 
-    def load_outlook_client(self):
+    def load_outlook_client(self) -> None:
         try:
             self.Outlook = win32com.client.Dispatch(
                 "Outlook.Application").GetNamespace("MAPI")
@@ -178,7 +180,7 @@ class LoadPresetHandler(PresetHandler):
     ''''
         This class handles the logic when the user selects load a preset 
         from the main menu, we load the outlook client and the users inbox
-        and then call run_preset_menu to display the users preset options
+        and then call preset_menu to display the users preset options
         and allow them to select one to load, if the user selects go back
         we return to the main menu, if the user selects a preset we load
         the preset and call _create_folders_in_outlook to check if the folders
@@ -189,14 +191,18 @@ class LoadPresetHandler(PresetHandler):
 
     def __init__(self) -> None:
         super().__init__()
-        self.loaded_preset = None
+        self.loaded_preset: 'Preset' = None
+        self.emails_moved = []
 
+
+    
+                
     def preset_menu_options(self) -> list:
         
         '''
             We want to create a menu that displays all the json files
-            in the config directory to the user and allow the user to select
-            one to load in a menu
+            in the config directory to the user. However to do that 
+            we need to find all the json files in the config directory
         '''
 
         json_files = Preset.fetch_jsons()
@@ -209,7 +215,7 @@ class LoadPresetHandler(PresetHandler):
 
         return choices
 
-    def run_preset_menu(self):
+    def preset_menu(self):
         
         '''
             We want to create a menu that displays all the json files
@@ -218,7 +224,6 @@ class LoadPresetHandler(PresetHandler):
         '''
 
         choices = self.preset_menu_options()
-
         # No json files were found in the config directory
         if not choices or choices is None:
             print("[!] No .json Presets were found in programs config directory... [!]")
@@ -236,13 +241,27 @@ class LoadPresetHandler(PresetHandler):
             ]
         )
         choice = json_menu["usr_opt"]
-        return choice 
+
+        if choice == "[ Go Back ]":
+            MainMenu.run()
+            return
+        
+        self.loaded_preset = Preset.load_preset(choice)
+
+        if not self.loaded_preset:
+            print("[!] An error occurred while trying to load the user preset [!]")
+            MainMenu.run()
+            return
+        
+        print(f"[i] Sucessfully loaded and opened user preset {choice} [i]")
+        
+
 
     def run(self):
         
         '''
             Main method that runs the logic for loading a preset
-            we call run_preset_menu to get the users choice of
+            we call preset_menu to get the users choice of
             preset to load, if the user selects go back we return
             to the main menu, if the user selects a preset we load
             the preset and call _create_folders_in_outlook to check
@@ -251,23 +270,15 @@ class LoadPresetHandler(PresetHandler):
             filters from the preset to the users inbox and then return
             to the main menu
         '''
-        # Recieve the users choice of the preset to load
-        userJSON = self.run_preset_menu()
-        if userJSON == "[ Go Back ]":
-            MainMenu.run()
-            return
-        
-        self.loaded_preset = Preset.load_preset(userJSON)
-        if not preset:
-            print("[!] An error occurred while trying to load the user preset [!]")
-            MainMenu.run()
-            return 
 
-        print("[i] Sucessfully loaded user preset [i]")
+        # User selects the preset they want to load
+        self.preset_menu()
         self._create_folders_in_outlook()
-        print(f'[i] Successfully created / confirmed existence of folders in Outlook from preset file\n[i]
-               applying filters [i]')
+
+        print(f'[i] Successfully created / confirmed existence of folders in Outlook from preset file\n[i] Applying filters [i]')
         self._apply_filters()
+        self.confirm_moves()
+        MainMenu.run()
 
     def _create_folders_in_outlook(self) -> None:
         
@@ -289,6 +300,18 @@ class LoadPresetHandler(PresetHandler):
                 debug.print_exc()
                 return 
 
+    def remove_duplicates(self, emails) -> list:
+        seen = set()
+        unique_items = []
+        for items in emails:
+            if items.id not in seen:
+                unique_items.append(items)
+                seen.add(items.id)
+        return unique_items
+    
+    def _apply_a_filter(self, filter_obj: 'Filter') -> tuple:
+        return ([self._find_matches_in(filter_obj)], filter_obj.folder_name)    
+
     def _apply_filters(self) -> None:
         
         """
@@ -305,77 +328,20 @@ class LoadPresetHandler(PresetHandler):
         print("[i] Applying filters from preset file...  [i]")
         for filter_obj in self.loaded_preset.folder_filters:
             try:
-                # If Apply A Filter returns False at any point (i.e it failed) continue
-                # to next iteration
-                if not self._apply_a_filter(filter_obj):
+                move_data = self._apply_a_filter(filter_obj)
+                if self.is_empty(move_data[0]):
+                    print(f'[i] Failed to find any emails to move.. {move_data[1]} [i]')
                     continue
-        
+
+                elif self.inbox.Folders.Item(move_data[1]) is None:
+                    print(f'[!] Failed to find folder => {move_data[1]} in Outlook.. Cannot move emails [!]')
+                    continue
+
+                print(f"[i] Successfully applied filter and found {len(self.emails_moved)} to move to {filter_obj.folder_name}[i]")
+                self.emails_moved.append(move_data)
+
             except Exception as ex:
                 print(f'[!] An error occurred while trying to apply the filter for {filter_obj.folder_name} [!]')
-                debug.print_exc()
-                continue
-
-    def _apply_a_filter(self, filter_obj: 'Filter') -> bool:
-        
-        '''
-            Performs the series of checks & actions performed 
-            when applying a singular filter to the users inbox
-            refactored into a method to improve code readability
-
-            1). We first try to find emails that match the filter criteria
-                if no emails are found we print a message and return False
-            
-            2). We then call _confirm_move to ask the user to confirm if they
-                want to move these emails to the specified folder. 
-                    -If they select No we return False and continue
-                     to the next filter
-                        
-            
-            3). If the user confirms we should move the emails the program found
-                double check if the folder exists in outlook which it always should
-                unless the user deleted it manually. 
-                    -If the folder doesn't exist we return False and continue to 
-                    the next filter
-            
-            4). If the folder exists we call _move_emails to move the emails to the folder
-        '''
-
-        emails_being_moved = self._find_matches_in(filter_obj)
-
-        # No Emails were found that matched the filter criteria
-        if not emails_being_moved:
-            print(f'[i] No emails were found that should be moved to {filter_obj.folder_name} [i]')
-            return False
-        
-        # Confirm with the user that they want to move the emails
-        if not self._confirm_move(emails_being_moved, filter_obj.folder_name):
-            return False 
-        
-        folder = self.inbox.Folders.Item(filter_obj.folder_name)
-
-        # Double Check folder exists before email is moved 
-        if folder is None:
-            print(
-                f'[!] Could not find a folder named "{filter_obj.folder_name}" [!]'
-            )
-            return False
-        
-        self._move_emails(emails_being_moved, folder)
-        print(f'[i] Sucessfully moved {len(emails_being_moved)} emails to {filter_obj.folder_name} [i]')
-        return True    
-
-        
-    def _move_emails(self, emails_being_moved: list, folder: str) -> None:
-        
-        '''
-            Moves the given list of emails into the specified folder.
-        '''
-
-        for email in emails_being_moved:
-            try:
-                email.Move(folder)
-            except Exception as ex:
-                print(f'[!] An error occurred while trying to move the email {email.Subject} to {folder} [!]')
                 debug.print_exc()
                 continue
 
@@ -400,29 +366,58 @@ class LoadPresetHandler(PresetHandler):
         # Check each email in the inbox against the filters list of subject lines 
         for subject_line in filter_obj.subject_lines:
             emails_being_moved.extend(
-                self.inbox.Items.Restrict(f"[Subject] = '{subject_line}'")            
-            )
-
-        # Check each email in the inbox against the filters list of senders
-        for sender in filter_obj.senders:
-            emails_being_moved.extend(
-                self.inbox.Items.Restrict(f"[SenderName] = '{sender}'")
-            )
+                self.inbox.Items.Restrict(f"[Subject] LIKE %'{subject_line}'%")            
+        )
 
         # Check each email in the inbox against the filters list of email addresses
         for email_address in filter_obj.emails:
             emails_being_moved.extend(
                 self.inbox.Items.Restrict(f"[SenderEmailAddress] = '{email_address}'")                
-            )
+        )
 
-        return emails_being_moved
+        return self.remove_duplicates(emails_being_moved)
+    
+    def _move_emails(self, emails_being_moved: list, folder: str) -> None:
+        
+        '''
+            Moves the given list of emails into the specified folder.
+        '''
+
+        for email in emails_being_moved:
+            try:
+                email.Move(folder)
+            except Exception as ex:
+                print(f'[!] An error occurred while trying to move the email {email.Subject} to {folder} [!]')
+                debug.print_exc()
+                continue
 
     def _display_an_email(self, email) -> None:
+        print('*'*60 + '\n')
         print(f"[>>] Email Subject: {email.Subject}")
         print(f"[>>] Email Sender: {email.SenderName}")
         print(f"[>>] Email Sender Email Address: {email.SenderEmailAddress}\n")
+        print('*'*60 + '\n')
+    
+    def confirm_moves(self) -> None:
+        if self.is_empty(self.emails_moved):
+            print("[i] No emails were found to move... [i]")
+            return 
         
-    def _confirm_move(self, emails_moved:list, folder:str) -> bool:
+        for emails, dst_folders in self.emails_moved:
+            try:
+                if self._confirm_move(emails, dst_folders):
+                    self._move_emails(emails, dst_folders)
+                    print(f'[i] Successfully moved {len(emails)} emails to => {dst_folders} [i]')
+                else:
+                    print(f'[i] Moving emails to {dst_folders} was cancelled by user [i]')
+                    continue
+
+            except Exception as ex:
+                print(f'[!] An error occurred while trying to move the emails to {dst_folders} [!]')
+                debug.print_exc()
+                continue
+
+    def _confirm_move(self, emails_moved: list, dst_folder: str) -> bool:
         
         '''
             Upon finding emails that match the filter criteria, this method asks 
@@ -431,10 +426,10 @@ class LoadPresetHandler(PresetHandler):
             This ensures that if the program makes an error the user can cancel the moving action
             before it happens.
         '''
-
-        menu_items = ["[ View Emails Being Moved ]", "[ Yes ]", "[ No ]"]
-        menu_prompt = f"[ Would you like to move the {len(emails_moved)} emails" + f" found into {folder} ]",
-        warning = "\n[!] WARNING this action cannot be undone [!]"
+        
+        menu_items = [f"[ View Emails Being Moved To {dst_folder} ]", "[ Yes ]", "[ No ]"]
+        menu_prompt = f"[ Would you like to move the {len(emails_moved)} emails" + f" found into {dst_folder} ]\n",
+        warning = "[!] WARNING this action cannot be undone [!]".center(60)
         yes_no_menu = prompt(
             [
                 {
@@ -449,16 +444,17 @@ class LoadPresetHandler(PresetHandler):
         choice = yes_no_menu["usr_opt"]
         
         # User wants to view the emails being moved
-        if choice == "[ View Emails Being Moved ]":
+        if choice == choice[0]:
             self._hndle_view_emails(emails_moved)
-            # Recursive call back to menu to confirm move after user views the emails
-            return self._confirm_move(emails_moved, folder)
+            return self._confirm_move(emails_moved, dst_folder)
         
-        elif choice == "[ Yes ]":
+        # User wants to move the emails
+        elif choice == choice[1]:
             print('[i] Moving emails... [i]')
             return True
 
-        elif choice == "[ No ]":
+        # User doesn't want to move the emails
+        elif choice == choice[2]:
             print("[i] Terminating Email Sort... [i]")
             return False
 
@@ -477,7 +473,6 @@ class LoadPresetHandler(PresetHandler):
         input(
             "\n" + "[i] Press Enter to Return back to the confirmation menu... [i]".center(60) + "\n"
         )
-        print("*"*60)
 
 
 
@@ -505,9 +500,8 @@ class CreatePresetHandler(PresetHandler):
         self.folderPattern = regex.compile(r'[\\/:*?"<>|]')
         self.emailPattern = regex.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
         self.known_emails: set = {emails.SenderEmailAddress for emails in self.inbox.Items}
-        self.known_senders: set = {emails.SenderName for emails in self.inbox.Items}
-
         # Input we need from a user 
+
         self.userFilters: list = []
         self.usrFolders: set = []
         self.subject_lines: set = []
@@ -583,23 +577,11 @@ class CreatePresetHandler(PresetHandler):
         
         return True
 
-    def sender_validator(self, usr_sender: str) -> bool:
-        if usr_sender.strip() == '':
-            print("[i] Sender cannot be empty. Please try again.")
-            return False
-        if usr_sender not in self.known_senders:
-            print(f"[i] The sender you entered ({usr_sender}) has not sent any emails to your inbox. Please re-enter a valid sender.")
-            return False
-        if usr_sender in self.senders:
-            print(f"[i] The sender you entered ({usr_sender}) already exists in the list of senders in your json file. Please try again.")
-            return False
-        return True
-
     def _get_field_input(self, field_name:str, field_prompt: str, input_validator: bool):
         flag, field_input = False, ''
         while True:
             print(field_prompt)
-            field_input = input(f'[?] Enter a {field_name} or "esc": ').strip()
+            field_input = input(f'[?] Enter a {field_name} you would like to add to the preset or "esc" when done: ').strip()
             if field_input.lower() == 'esc':
                 flag = True
                 break
@@ -651,7 +633,7 @@ class CreatePresetHandler(PresetHandler):
         self.usrFolders = users_folders  
     
     
-    def continue_menu(self, field: str, current: int) -> None:
+    def continue_menu(self, field: str, current: int) -> int:
         choices = ["[ Continue ]", "[ Go Back ]"]
         yes_no_menu = prompt(
             [
@@ -665,49 +647,84 @@ class CreatePresetHandler(PresetHandler):
         )
         choice = yes_no_menu["usr_opt"]
         if choice == choices[0]:
+            print('[i] Restarting field input... [i]')
             return current
         
         elif choice == choices[1]:
             MainMenu.run()
             return -1
     
-    def get_filter_data(self, current:int, current_folder:str) -> list:
+    def get_filter_data(self, current:int, current_folder:str) -> None:
+        
         '''
-        WORK IN PROGRESS
+            Since we have 3 fields we need to get input for and we are using 
+            an index to keep track of which field we are getting input for we
+            need if elif blocks to assign the correct field we are recieving input
+            for and the correct prompt to display to the user as well as the correct
+            input validator we need to use for the field we are getting input for
+
+            We also need to check if the user inputted nothing for a field, a user 
+            must at least input one item for each field and if they did not input 
+            anything for a field we need to ask them if they want to continue or
+            go back to the main menu and if they want to continue we need to reprompt 
+            them for the correct field which we keep track of with current 
         '''
+
+        # We need to keep track of the current field we are getting input for 
+        # and then check it afte recieving input to see if the user inputted nothing
         field = []
+
+        # Get Subject Line Input
         if current == 0:
-            users_subject_lines = self.get_a_fields_input('subject line', 
-                f'Enter subject lines that should move an email into the {current_folder} or "esc": ', 
+            self.subject_lines = self.get_a_fields_input('subject line', 
+                f'Enter subject lines that should move an email into the {current_folder} or "esc" when done: ', 
                 self.subject_line_validator
             )
-            field = users_subject_lines
+            field = self.subject_lines
 
+        # Get Email Address Input
         elif current == 1:
-            users_email_addresses = self.get_a_fields_input('email address', 
-                f'Enter email addresses that should move an email into the {current_folder} or "esc": ', 
+            self.emailAddresses = self.get_a_fields_input('email address', 
+                f'Enter email addresses that should move an email into the {current_folder} or "esc" when done: ', 
                 self.email_address_validator 
             )
-            field = users_email_addresses
+            field = self.emailAddresses
 
-        elif current == 2:
-            users_senders = self.get_a_fields_input('sender', 
-                f'Enter senders that should move an email into the {current_folder} or "esc": ', 
-                self.email_address_validator
-            )
-            field = users_senders
-
-        if not field:
-            if self.continue_menu('filter', self.get_filter_data) != -1:
+        # Check if they provided at least one item for the field
+        if self.is_empty(field):
+            if self.continue_menu('filter', self.get_filter_data) == current:
+                # Recursive Call to get the same field input again
                 self.get_filter_data(current, current_folder)
+            else:
+                print('[i] Returning to Main Menu... [i]')
+                MainMenu.run()
+                return 
         
-        return field
-        
-        
-
+    
     def get_filters(self):
-        for i, folders in enumerate(self.usrFolders, start = 0):
-            self.get_filter_data(i, folders)
+        
+        '''
+            For each folder name the user inputted we want to set the properties
+            of the Filter object (i.e the nested dictionary in the preset file)
+            So we call get_filter_data for each folder name the user inputted
+            and set the properties of the Filter object for each folder name
+            and Construct a Filter Object each time we call get_filter_data
+        '''
+
+        for folders in self.usrFolders:
+            print(f'[i] Getting filter data for folder => {folders} [i]')
+            for i in range(2):
+                self.get_filter_data(i, folders)
+
+            print(f'[i] Finished getting filter data for folder => {folders} [i]')
+            self.userFilters.append(
+                Filter(self.subject_lines, self.emailAddresses, folders)
+            )
+            self.reset_fields()
+    
+    def reset_fields(self):
+        self.subject_lines = []
+        self.emailAddresses = []
 
             
 
